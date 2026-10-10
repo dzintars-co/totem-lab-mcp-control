@@ -1,0 +1,40 @@
+# Local build caches and intermediate outputs
+.cache/
+build/
+node_modules/
+*.o
+*.a
+*.elf
+*.map
+*.eep
+*.test
+coverage.out
+*.log
+
+# Private configuration, credentials and bridge conversation IDs
+.codex/
+.agents/
+.aws/
+.env
+.env.*
+!.env.example
+auth.json
+credentials.json
+token.json
+thread-id*.txt
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+id_rsa*
+id_ed25519*
+
+# Editor and operating-system temporary files
+*~
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# The supplied binaries and final firmware HEX are intentionally included.

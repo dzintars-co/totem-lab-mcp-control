@@ -1,0 +1,9 @@
+# Preserve the supplied file bytes and SHA256SUMS on every platform.
+* -text
+*.jpg binary
+*.png binary
+*.hex whitespace=cr-at-eol
+# Upstream source is retained verbatim, including its whitespace.
+third_party/** -whitespace
+Projects/totem-mcp/bin/* binary
+Projects/totem-mcp/codex-bridge/bin/* binary
