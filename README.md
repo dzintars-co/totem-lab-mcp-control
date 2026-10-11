@@ -6,6 +6,8 @@ Totem Lab MCP Control connects a physical Totem MiniLab panel to a computer thro
 
 Live demonstration (2:01): [watch the video](Video/minilab-rec.mp4).
 
+https://github.com/user-attachments/assets/1ad7da8d-3768-4bcf-9008-ff5246bebe1b
+
 Assembled Totem MiniLab IO Side Panel and TotemDuino board:
 
 ![Assembled Totem MiniLab panel and TotemDuino board](Pictures/plate.jpg)

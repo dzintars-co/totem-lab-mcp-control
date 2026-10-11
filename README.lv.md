@@ -6,6 +6,8 @@ Totem Lab MCP Control savieno fizisku Totem MiniLab paneli ar datoru, izmantojot
 
 Darbības demonstrācija (2:01): [skatīt video](Video/minilab-rec.mp4).
 
+https://github.com/user-attachments/assets/1ad7da8d-3768-4bcf-9008-ff5246bebe1b
+
 Saslēgts Totem MiniLab IO Side Panel un TotemDuino plate:
 
 ![Saslēgtais Totem MiniLab panelis un TotemDuino plate](Pictures/plate.jpg)
