@@ -4,13 +4,15 @@
 
 Totem Lab MCP Control savieno fizisku Totem MiniLab paneli ar datoru, izmantojot Arduino, Go MCP serveri un Codex CLI. Projekts nolasa slēdžus, pogas, potenciometrus un enkoderi, rāda izmaiņas termināļa panelī un ļauj ar MCP rīkiem vadīt RGB LED un releju.
 
+Darbības demonstrācija (2:01): [skatīt video](Video/minilab-rec.mp4).
+
 Saslēgts Totem MiniLab IO Side Panel un TotemDuino plate:
 
 ![Saslēgtais Totem MiniLab panelis un TotemDuino plate](Pictures/plate.jpg)
 
 [![CI](https://github.com/dzintars-co/totem-lab-mcp-control/actions/workflows/go-ci.yml/badge.svg?branch=main)](https://github.com/dzintars-co/totem-lab-mcp-control/actions/workflows/go-ci.yml)
 
-Projektā ir Arduino programma, Go MCP serveris, Go/Codex termināļa panelis, pirmkods, testi un gatavie palaišanas faili. Dokumentācija angliski: [README.md](README.md). Izmantotie avoti: [SOURCES.lv.md](SOURCES.lv.md).
+Projektā ir Arduino programma, Go MCP serveris, Go/Codex termināļa panelis, pirmkods, testi un gatavie palaišanas faili. Dokumentācija angliski: [README.md](README.md). Izmantotie avoti: [SOURCES.lv.md](SOURCES.lv.md). Dokumentācijas rādītājs AI sistēmām: [llms.txt](llms.txt).
 
 Versija **1.0.0**. Laidienu vēsture: [CHANGELOG.md](CHANGELOG.md). V1 saskarni veido dokumentētie MCP rīki/resursi, komandrindas parametri un seriālais protokols v1; nesaderīgas izmaiņas šajās saskarnēs prasa jaunu galveno versiju.
 
