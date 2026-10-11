@@ -49,7 +49,7 @@ func panelSession(ctx context.Context, endpoint string, c *cursor, emit func(cha
 	}()
 	streamEnded := make(chan error, 1)
 	updates, ack := make(chan struct{}, 1), make(chan struct{}, 1)
-	client := mcp.NewClient(&mcp.Implementation{Name: "totem-codex-bridge", Version: "0.1.0"}, &mcp.ClientOptions{
+	client := mcp.NewClient(&mcp.Implementation{Name: "totem-codex-bridge", Version: "0.1.1"}, &mcp.ClientOptions{
 		ResourceUpdatedHandler: func(_ context.Context, r *mcp.ResourceUpdatedNotificationRequest) {
 			if r != nil && r.Params != nil && r.Params.URI == eventsURI {
 				select {
