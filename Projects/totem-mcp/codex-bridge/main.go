@@ -127,7 +127,7 @@ func run(parent context.Context, o options, out, stderr io.Writer) error {
 	var listenErr error
 	listenerStopped := make(chan struct{})
 	go func() {
-		listenErr = listenPanel(ctx, o.endpoint, &cursor{potStep: o.potStep}, emit, nil)
+		listenErr = listenPanel(ctx, o.endpoint, &cursor{potStep: o.potStep}, emit, nil, nil)
 		close(listenerStopped)
 	}()
 	defer func() { cancel(); <-listenerStopped }()

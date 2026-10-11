@@ -8,6 +8,14 @@ The project includes Arduino firmware, the Go MCP server, the Go/Codex terminal 
 
 The sections below describe the architecture, wiring and startup commands. All startup paths are relative to the project root, **totem-lab-mcp-control**.
 
+Terminal dashboard with panel values and Codex event reports:
+
+![Terminal dashboard and Codex event reports](Pictures/izvade.png)
+
+Live input values, RGB and relay commands, and MCP subscription status:
+
+![Live panel values, output commands and MCP subscription](Pictures/dashboard-live-events.png)
+
 ## 1. Contents and code map
 
 ```text
@@ -27,7 +35,8 @@ totem-lab-mcp-control/
 │   ├── panelis.jpg                     IO Side Panel
 │   ├── uno r3.jpg                      TotemDuino board
 │   ├── plate.jpg                       Assembled hardware
-│   └── izvade.png                      Terminal dashboard example
+│   ├── izvade.png                      Terminal dashboard example
+│   └── dashboard-live-events.png       Live values, output commands and subscription
 └── Projects/totem-mcp/
     ├── go.mod / go.sum                  MCP server module and dependency checksums
     ├── cmd/totem-mcp/main.go            Server entry point
@@ -76,15 +85,13 @@ The bridge uses MCP `2026-07-28` subscriptions through the official MCP Go SDK. 
 
 The server keeps a bounded event history in memory. A new bridge process starts from the latest state. After a connection interruption, the same process recovers retained events; if history is missing or the server has restarted, it reports resynchronization rather than inventing button presses. This technical subscription is separate from a paid ChatGPT subscription.
 
-Terminal dashboard with panel values and Codex event reports:
-
-![Terminal dashboard and Codex event reports](Pictures/izvade.png)
+The bridge monitors the actual HTTP/SSE subscription stream. If it ends or a connection attempt fails, the dashboard shows `DISCONNECTED` and the MCP error. Previously received values remain visible as **last reading — not current**. The bridge retries after two seconds. `CONNECTED` requires an active subscription, `valid=true` and hardware `status=connected`; a cached reading alone cannot restore it.
 
 ## 3. Requirements
 
 - The included Go executables require **Linux x86-64, glibc 2.34 or newer**, loader `/lib64/ld-linux-x86-64.so.2`, `libc` and `libresolv`. They do not directly run on Windows/macOS/ARM/musl; build natively if required.
 - USB serial-device access and the matching firmware on the board. Close other applications using that port.
-- A terminal; about 110 columns allows the dashboard's two columns to appear side by side. Narrower windows stack them vertically.
+- A terminal; about 110 columns allows the dashboard's two columns to appear side by side. Narrower windows stack them vertically. The view fits the window height and supports scrolling.
 - For AI only: an installed/authenticated **Codex CLI**, internet/account availability and support for `exec`, `exec resume`, `--json`, `--ignore-user-config`. `codex` must be on `PATH` or supplied using `-codex`.
 - For rebuilding/uploading only: a suitable Go toolchain/C compiler and Arduino CLI/IDE with AVR tools. The included Go programs are built with **Go 1.27.2**; module declarations are Go 1.25.0 for the server and 1.26.0 for the bridge. Firmware uses **Arduino AVR core 1.8.8**, target `arduino:avr:uno`.
 
@@ -156,9 +163,13 @@ If not authenticated, run `codex login`, then:
 
 New events produce Codex answers in the dashboard. Manual chat is separate. If needed, add `-codex /actual/absolute/path/to/codex`.
 
+Scroll with `↑`/`↓` or `k`/`j`, `PgUp`/`PgDn`, `Home`/`End`, or the mouse wheel. The connection header and navigation hints remain visible while scrolling. Resizing the terminal adjusts the layout and available scroll range.
+
 #### Codex authentication and conversation
 
 `codex.go` launches the installed CLI and inherits the terminal's environment. AI mode uses that CLI's local authentication: a ChatGPT login or an API-key login configured through Codex. The project does not select a particular account. Codex manages its credentials in its own storage, normally under `~/.codex` or in the operating system's credential store; `CODEX_HOME` selects the Codex home directory.
+
+Each user authenticates their own local Codex CLI. On a computer where Codex is already signed in, AI mode uses that computer's current login. The MCP server and the dashboard's `-dry-run` mode require no OpenAI account or paid subscription.
 
 The reporting worker uses `--ignore-user-config` to skip `$CODEX_HOME/config.toml`. **This flag does not disable authentication.** `codex login status` shows the login status/mode. MCP event subscriptions and `-dry-run` work without a Codex login. See the official [authentication documentation](https://learn.chatgpt.com/docs/auth) and [CLI reference](https://learn.chatgpt.com/docs/cli/reference).
 
