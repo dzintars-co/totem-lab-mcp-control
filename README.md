@@ -4,6 +4,10 @@
 
 Totem Lab MCP Control connects a physical Totem MiniLab panel to a computer through Arduino, a Go MCP server and Codex CLI. It reads switches, buttons, potentiometers and the encoder, displays changes in a terminal dashboard, and controls the panel’s RGB LED and relay through MCP tools.
 
+Assembled Totem MiniLab IO Side Panel and TotemDuino board:
+
+![Assembled Totem MiniLab panel and TotemDuino board](Pictures/plate.jpg)
+
 The project includes Arduino firmware, the Go MCP server, the Go/Codex terminal dashboard, source code, tests and ready-to-run outputs. Latvian documentation: [README.lv.md](README.lv.md). References: [SOURCES.md](SOURCES.md).
 
 The sections below describe the architecture, wiring and startup commands. All startup paths are relative to the project root, **totem-lab-mcp-control**.
