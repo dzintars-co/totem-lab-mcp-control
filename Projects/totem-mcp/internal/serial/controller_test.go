@@ -87,6 +87,10 @@ func waitSequence(t *testing.T, ctx context.Context, s *panel.Store, seq uint32)
 }
 
 func setupController(t *testing.T) (context.Context, *Controller, *fakePort, <-chan error) {
+	return setupControllerWithProbe(t, time.Minute)
+}
+
+func setupControllerWithProbe(t *testing.T, interval time.Duration) (context.Context, *Controller, *fakePort, <-chan error) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	s, err := panel.New("test", 115200, 16)
@@ -94,7 +98,7 @@ func setupController(t *testing.T) (context.Context, *Controller, *fakePort, <-c
 		t.Fatal(err)
 	}
 	s.Connecting()
-	c := New(Config{BootDelay: 0, CommandTimeout: time.Second}, s, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	c := New(Config{BootDelay: 0, CommandTimeout: time.Second, IdleProbeInterval: interval}, s, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	p, done := newFakePort(), make(chan error, 1)
 	go func() { done <- c.serve(ctx, p); close(done) }()
 	t.Cleanup(func() {
@@ -185,5 +189,72 @@ func TestMalformedFrameRequiresResynchronization(t *testing.T) {
 	v := c.store.View(nil, "", true)
 	if v.Sequence != 1 || v.LastError == "" || v.Events[len(v.Events)-1].Kind != "protocol_error" {
 		t.Fatalf("malformed frame changed the reading or lost its error: %+v", v)
+	}
+}
+
+func TestIdleFirmwareRepliesDoNotInventInputEvents(t *testing.T) {
+	ctx, c, p, _ := setupControllerWithProbe(t, 20*time.Millisecond)
+	initial := c.store.View(nil, "", true)
+	for seq := uint32(2); seq <= 4; seq++ {
+		id := nextCommand(t, ctx, p, "GET")
+		feed(t, p, "ACK", seq, id, "#000000")
+		waitSequence(t, ctx, c.store, seq)
+		view := c.store.View(nil, "", true)
+		if !view.Valid || view.Status != "connected" || view.LastEventID != initial.LastEventID {
+			t.Fatalf("idle firmware became disconnected or created an input event: %+v", view)
+		}
+	}
+}
+
+func TestSilentFirmwareEndsConnectionAfterIdleProbe(t *testing.T) {
+	ctx, _, p, done := setupControllerWithProbe(t, 20*time.Millisecond)
+	_ = nextCommand(t, ctx, p, "GET")
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "firmware acknowledgement timed out") {
+			t.Fatalf("silent firmware did not end the connection: %v", err)
+		}
+	case <-ctx.Done():
+		t.Fatal("silent firmware connection was retained indefinitely")
+	}
+	select {
+	case <-p.closed:
+	default:
+		t.Fatal("unresponsive firmware port was not closed")
+	}
+	select {
+	case line := <-p.writes:
+		t.Fatalf("command was replayed after an unanswered idle probe: %q", line)
+	default:
+	}
+}
+
+func TestIdleProbeDoesNotInterruptOutputAcknowledgement(t *testing.T) {
+	ctx, c, p, _ := setupControllerWithProbe(t, 100*time.Millisecond)
+	result := make(chan response, 1)
+	go func() { r, err := c.Execute(ctx, "RGB", "#FF0000"); result <- response{r, err} }()
+	id := nextCommand(t, ctx, p, "RGB")
+	select {
+	case line := <-p.writes:
+		t.Fatalf("idle probe interrupted an output command: %q", line)
+	case <-time.After(300 * time.Millisecond):
+	}
+	feed(t, p, "ACK", 2, id, "#FF0000")
+	select {
+	case r := <-result:
+		if r.err != nil || r.reading.State.RGB != "#FF0000" {
+			t.Fatalf("output was not confirmed before the idle probe: %+v", r)
+		}
+	case <-ctx.Done():
+		t.Fatal("output acknowledgement was not processed")
+	}
+	probeID := nextCommand(t, ctx, p, "GET")
+	if probeID == id {
+		t.Fatal("idle probe reused the output command ID")
+	}
+	feed(t, p, "ACK", 3, probeID, "#FF0000")
+	waitSequence(t, ctx, c.store, 3)
+	if view := c.store.View(nil, "", false); !view.Valid || view.State.RGB != "#FF0000" {
+		t.Fatalf("idle probe changed the confirmed output: %+v", view)
 	}
 }

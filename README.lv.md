@@ -12,6 +12,8 @@ Saslēgts Totem MiniLab IO Side Panel un TotemDuino plate:
 
 Projektā ir Arduino programma, Go MCP serveris, Go/Codex termināļa panelis, pirmkods, testi un gatavie palaišanas faili. Dokumentācija angliski: [README.md](README.md). Izmantotie avoti: [SOURCES.lv.md](SOURCES.lv.md).
 
+Versija **1.0.0**. Laidienu vēsture: [CHANGELOG.md](CHANGELOG.md). V1 saskarni veido dokumentētie MCP rīki/resursi, komandrindas parametri un seriālais protokols v1; nesaderīgas izmaiņas šajās saskarnēs prasa jaunu galveno versiju.
+
 Tālāk aprakstīta projekta uzbūve, pieslēgumi un palaišanas komandas. Visi palaišanas ceļi ir relatīvi pret projekta saknes mapi **totem-lab-mcp-control**.
 
 ## Ātrā palaišana
@@ -109,6 +111,8 @@ Savienojuma programma (bridge) izmanto MCP `2026-07-28` abonēšanu ar oficiālo
 Serveris glabā ierobežotu notikumu vēsturi operatīvajā atmiņā. Jauns bridge process sāk ar jaunāko stāvokli. Pēc savienojuma pārtraukuma tas pats process atgūst saglabātos notikumus; ja vēsture trūkst vai serveris pārstartēts, tas paziņo par atkārtotu sinhronizāciju, neizdomājot pogu nospiešanas. Šī tehniskā abonēšana ir atsevišķa no maksas ChatGPT abonementa.
 
 Bridge uzrauga faktisko HTTP/SSE abonēšanas plūsmu. Ja tā pārtrūkst vai pieslēgšanās neizdodas, panelis rāda `DISCONNECTED` un MCP kļūdu. Iepriekš saņemtās vērtības paliek redzamas ar norādi **Pēdējais nolasījums — nav aktuāls**. Bridge atkārtoti pieslēdzas pēc divām sekundēm. `CONNECTED` prasa aktīvu abonēšanu, `valid=true` un aparatūras `status=connected`; saglabāts nolasījums viens pats šo statusu neatjauno.
+
+Pēc piecām sekundēm bez jauna seriālā nolasījuma serveris pārbauda, vai firmware atbild, nosūtot tikai nolasīšanas komandu `GET` ar savu apstiprinājuma ID. Ja atbildes nav, serveris aizver seriālo savienojumu, atzīmē saglabāto stāvokli kā nederīgu un pieslēdzas atkārtoti. Noklusētais apstiprinājuma gaidīšanas laiks ir divas sekundes (`-command-timeout`). Šīs pārbaudes nemaina izejas un nerada ieeju notikumus, ja vērtības nemainās; fiziskās ieeju izmaiņas joprojām pienāk kā firmware notikumi caur MCP abonēšanu.
 
 ## 3. Priekšnosacījumi
 

@@ -15,11 +15,12 @@ import (
 )
 
 type Config struct {
-	Port           string
-	Baud           int
-	BootDelay      time.Duration
-	ReconnectDelay time.Duration
-	CommandTimeout time.Duration
+	Port              string
+	Baud              int
+	BootDelay         time.Duration
+	ReconnectDelay    time.Duration
+	CommandTimeout    time.Duration
+	IdleProbeInterval time.Duration
 }
 
 type response struct {
@@ -45,6 +46,9 @@ type Controller struct {
 }
 
 func New(config Config, store *panel.Store, logger *slog.Logger) *Controller {
+	if config.IdleProbeInterval <= 0 {
+		config.IdleProbeInterval = 5 * time.Second
+	}
 	return &Controller{config: config, store: store, logger: logger, commands: make(chan request)}
 }
 
@@ -79,7 +83,8 @@ func (c *Controller) Execute(ctx context.Context, kind, value string) (panel.Rea
 	}
 }
 
-// Run never replays an output command after reconnecting. GET is used only to synchronize.
+// Run never replays an output command after reconnecting. GET synchronizes the
+// state and checks firmware responsiveness after an idle period.
 func (c *Controller) Run(ctx context.Context) {
 	for ctx.Err() == nil {
 		c.store.Connecting()
@@ -193,6 +198,19 @@ func (c *Controller) serve(ctx context.Context, port serialport.Port) (returnErr
 	var commandTimer *time.Timer
 	var lastSequence uint32
 	var haveSequence, synced, gapAnnounced bool
+	probeTimer := time.NewTimer(c.config.IdleProbeInterval)
+	probeTimer.Stop()
+	defer probeTimer.Stop()
+	var probeChannel <-chan time.Time
+	resetProbe := func() {
+		if synced && p == nil {
+			probeTimer.Reset(c.config.IdleProbeInterval)
+			probeChannel = probeTimer.C
+		} else {
+			probeTimer.Stop()
+			probeChannel = nil
+		}
+	}
 	finish := func(result response) {
 		if p != nil && p.request != nil {
 			p.request.reply <- result
@@ -201,6 +219,7 @@ func (c *Controller) serve(ctx context.Context, port serialport.Port) (returnErr
 		if commandTimer != nil {
 			commandTimer.Stop()
 		}
+		resetProbe()
 	}
 	defer func() {
 		if p != nil {
@@ -225,6 +244,7 @@ func (c *Controller) serve(ctx context.Context, port serialport.Port) (returnErr
 			return err
 		}
 		p = &pending{id: c.nextID, request: r}
+		resetProbe()
 		writeCtx, cancelWrite := context.WithTimeout(ctx, c.config.CommandTimeout)
 		var callerDone <-chan struct{}
 		if r != nil {
@@ -257,6 +277,10 @@ func (c *Controller) serve(ctx context.Context, port serialport.Port) (returnErr
 			return errors.New("command caller cancelled before acknowledgement")
 		case <-deadline:
 			return errors.New("firmware acknowledgement timed out")
+		case <-probeChannel:
+			if err := start(nil); err != nil {
+				return err
+			}
 		case <-bootChannel:
 			bootChannel = nil
 			if err := start(nil); err != nil {
@@ -312,6 +336,9 @@ func (c *Controller) serve(ctx context.Context, port serialport.Port) (returnErr
 				}
 				lastSequence, haveSequence, gapAnnounced = seq, true, false
 				c.store.Apply(frame.Reading)
+				if synced && p == nil {
+					resetProbe()
+				}
 				if frame.Kind == "ACK" && p != nil && frame.ID == p.id {
 					if p.request == nil {
 						synced = true
