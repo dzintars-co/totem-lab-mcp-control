@@ -12,6 +12,8 @@ Assembled Totem MiniLab IO Side Panel and TotemDuino board:
 
 The project includes Arduino firmware, the Go MCP server, the Go/Codex terminal dashboard, source code, tests and ready-to-run outputs. Latvian documentation: [README.lv.md](README.lv.md). References: [SOURCES.md](SOURCES.md).
 
+Version **1.0.0**. Release history: [CHANGELOG.md](CHANGELOG.md). The v1 interface comprises the documented MCP tools/resources, command-line options and serial protocol v1; incompatible changes to these interfaces require a new major version.
+
 The sections below describe the architecture, wiring and startup commands. All startup paths are relative to the project root, **totem-lab-mcp-control**.
 
 ## Quick start
@@ -109,6 +111,8 @@ The bridge uses MCP `2026-07-28` subscriptions through the official MCP Go SDK. 
 The server keeps a bounded event history in memory. A new bridge process starts from the latest state. After a connection interruption, the same process recovers retained events; if history is missing or the server has restarted, it reports resynchronization rather than inventing button presses. This technical subscription is separate from a paid ChatGPT subscription.
 
 The bridge monitors the actual HTTP/SSE subscription stream. If it ends or a connection attempt fails, the dashboard shows `DISCONNECTED` and the MCP error. Previously received values remain visible as **last reading — not current**. The bridge retries after two seconds. `CONNECTED` requires an active subscription, `valid=true` and hardware `status=connected`; a cached reading alone cannot restore it.
+
+The server checks firmware responsiveness after five seconds without a fresh serial reading, using a read-only `GET` command with its own acknowledgement ID. A missing reply closes the serial connection, marks retained state invalid and triggers reconnection. The default acknowledgement timeout is two seconds (`-command-timeout`). These checks do not change outputs or create input events when values are unchanged; physical input changes still arrive as firmware events through the MCP subscription.
 
 ## 3. Requirements
 

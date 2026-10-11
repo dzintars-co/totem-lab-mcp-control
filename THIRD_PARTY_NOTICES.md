@@ -714,7 +714,6 @@ POSSIBILITY OF SUCH DAMAGE.
 - `golang.org/x/oauth2 v0.35.0 — LICENSE`
 - `golang.org/x/sync v0.20.0 — LICENSE`
 - `golang.org/x/sync v0.22.0 — LICENSE`
-- `golang.org/x/sys v0.43.0 — LICENSE`
 - `golang.org/x/sys v0.47.0 — LICENSE`
 - `golang.org/x/time v0.15.0 — LICENSE`
 - `Go 1.27.2 standard library — LICENSE`
@@ -757,7 +756,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 - `golang.org/x/sync v0.20.0 — PATENTS`
 - `golang.org/x/sync v0.22.0 — PATENTS`
-- `golang.org/x/sys v0.43.0 — PATENTS`
 - `golang.org/x/sys v0.47.0 — PATENTS`
 - `golang.org/x/time v0.15.0 — PATENTS`
 - `Go 1.27.2 standard library — PATENTS`
