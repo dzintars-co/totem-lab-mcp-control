@@ -8,9 +8,28 @@ Assembled Totem MiniLab IO Side Panel and TotemDuino board:
 
 ![Assembled Totem MiniLab panel and TotemDuino board](Pictures/plate.jpg)
 
+[![CI](https://github.com/dzintars-co/totem-lab-mcp-control/actions/workflows/go-ci.yml/badge.svg?branch=main)](https://github.com/dzintars-co/totem-lab-mcp-control/actions/workflows/go-ci.yml)
+
 The project includes Arduino firmware, the Go MCP server, the Go/Codex terminal dashboard, source code, tests and ready-to-run outputs. Latvian documentation: [README.lv.md](README.lv.md). References: [SOURCES.md](SOURCES.md).
 
 The sections below describe the architecture, wiring and startup commands. All startup paths are relative to the project root, **totem-lab-mcp-control**.
+
+## Quick start
+
+On compatible Linux x86-64 with this firmware already on the board, connect USB. Open two terminals in the project root and run one block in each; replace `/dev/ttyUSB0` with the actual port.
+
+```bash
+# Terminal 1 — MCP server
+unset TOTEM_MCP_TOKEN
+./Projects/totem-mcp/bin/totem-mcp -port /dev/ttyUSB0 -baud 115200 -listen 127.0.0.1:8080
+```
+
+```bash
+# Terminal 2 — live dashboard without AI
+./Projects/totem-mcp/codex-bridge/bin/totem-codex-bridge -ui -dry-run
+```
+
+The dashboard shows input events without a Codex login. Codex reporting and manual chat are described in section 5 below; requirements and firmware setup are in sections 3 and 7.
 
 Terminal dashboard with panel values and Codex event reports:
 

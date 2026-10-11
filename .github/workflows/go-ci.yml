@@ -1,4 +1,4 @@
-name: Go CI
+name: Go and Arduino CI
 
 'on':
   push:
@@ -49,3 +49,29 @@ jobs:
         run: go vet ./...
       - name: Build
         run: go build -trimpath -buildvcs=false -o "$RUNNER_TEMP/${{ matrix.binary }}" "${{ matrix.package }}"
+
+  firmware:
+    name: Arduino firmware
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Arduino CLI
+        uses: arduino/setup-arduino-cli@81d310742121c928ea9c8bbd407b4217b432ae02 # v2.0.0
+        with:
+          version: '1.5.1'
+      - name: Install AVR core on the CI runner
+        run: |
+          arduino-cli core update-index
+          arduino-cli core install arduino:avr@1.8.8
+      - name: Compile Arduino Uno firmware
+        run: |
+          arduino-cli compile --fqbn arduino:avr:uno \
+            --build-path "$RUNNER_TEMP/totem-firmware" \
+            Projects/totem-mcp/firmware/totem_uno

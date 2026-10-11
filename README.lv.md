@@ -8,9 +8,28 @@ Saslēgts Totem MiniLab IO Side Panel un TotemDuino plate:
 
 ![Saslēgtais Totem MiniLab panelis un TotemDuino plate](Pictures/plate.jpg)
 
+[![CI](https://github.com/dzintars-co/totem-lab-mcp-control/actions/workflows/go-ci.yml/badge.svg?branch=main)](https://github.com/dzintars-co/totem-lab-mcp-control/actions/workflows/go-ci.yml)
+
 Projektā ir Arduino programma, Go MCP serveris, Go/Codex termināļa panelis, pirmkods, testi un gatavie palaišanas faili. Dokumentācija angliski: [README.md](README.md). Izmantotie avoti: [SOURCES.lv.md](SOURCES.lv.md).
 
 Tālāk aprakstīta projekta uzbūve, pieslēgumi un palaišanas komandas. Visi palaišanas ceļi ir relatīvi pret projekta saknes mapi **totem-lab-mcp-control**.
+
+## Ātrā palaišana
+
+Saderīgā Linux x86-64 datorā, ja šī programma jau iešūta platē, pieslēdz USB. Atver divus termināļus projekta saknes mapē un katrā palaid vienu bloku; `/dev/ttyUSB0` aizstāj ar faktisko portu.
+
+```bash
+# Terminal 1 — MCP server
+unset TOTEM_MCP_TOKEN
+./Projects/totem-mcp/bin/totem-mcp -port /dev/ttyUSB0 -baud 115200 -listen 127.0.0.1:8080
+```
+
+```bash
+# Terminal 2 — live dashboard without AI
+./Projects/totem-mcp/codex-bridge/bin/totem-codex-bridge -ui -dry-run
+```
+
+Panelis rāda ieeju notikumus bez Codex autorizācijas. Codex atbildes un manuālais čats aprakstīti 5. sadaļā; priekšnosacījumi un plates programmas sagatavošana — 3. un 7. sadaļā.
 
 Termināļa panelis ar aparatūras vērtībām un Codex notikumu atbildēm:
 
