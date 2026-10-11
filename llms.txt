@@ -1,0 +1,24 @@
+# Totem Lab MCP Control
+
+> Open-source bidirectional hardware control and event reporting for TotemDuino v1.9 and the Totem MiniLab IO Side Panel v1.7, using Arduino firmware, a Go Model Context Protocol (MCP) server and an optional Codex CLI integration.
+
+The Arduino firmware reads three switches, three buttons, three potentiometers and an encoder with a button, sending state changes over USB serial. The Go MCP server exposes `get_panel_state`, `panel://state` and `panel://events`, supports event subscriptions, and controls the RGB LED and relay through `set_rgb` and `set_relay`. Output values confirm applied firmware commands, not independent physical measurements.
+
+The Codex bridge receives MCP events and displays hardware state and events in a terminal dashboard. It can also pass events to the locally installed, authenticated Codex CLI for reports. The server and the bridge's `-dry-run` mode require no OpenAI account. MCP subscriptions alone do not wake arbitrary AI agents or write to an existing open chat; the bridge manages its own reporting conversation.
+
+## Documentation
+
+- [README (English)](https://raw.githubusercontent.com/dzintars-co/totem-lab-mcp-control/main/README.md): Architecture, wiring, startup commands, MCP interfaces and troubleshooting.
+- [README (Latvian)](https://raw.githubusercontent.com/dzintars-co/totem-lab-mcp-control/main/README.lv.md): Latvian project and operation guide.
+- [Sources (English)](https://raw.githubusercontent.com/dzintars-co/totem-lab-mcp-control/main/SOURCES.md): Official references, dependencies and build versions.
+- [Sources (Latvian)](https://raw.githubusercontent.com/dzintars-co/totem-lab-mcp-control/main/SOURCES.lv.md): Latvian references and dependency information.
+- [GitHub Releases](https://github.com/dzintars-co/totem-lab-mcp-control/releases): Versioned source archives, Linux x86_64 executables, firmware HEX and checksums.
+
+## Implementation
+
+- [MCP server](https://raw.githubusercontent.com/dzintars-co/totem-lab-mcp-control/main/Projects/totem-mcp/internal/mcp/server.go): Tools, resources and subscription notifications.
+- [Serial protocol](https://raw.githubusercontent.com/dzintars-co/totem-lab-mcp-control/main/Projects/totem-mcp/internal/protocol/protocol.go): Serial protocol v1 command encoding and firmware frame parsing.
+- [Arduino firmware](https://raw.githubusercontent.com/dzintars-co/totem-lab-mcp-control/main/Projects/totem-mcp/firmware/totem_uno/totem_uno.ino): Pin allocation, input readings, output control and serial communication; requires adjacent `types.h`.
+- [Codex bridge subscriptions](https://raw.githubusercontent.com/dzintars-co/totem-lab-mcp-control/main/Projects/totem-mcp/codex-bridge/mcp.go): MCP subscription client, event retrieval and reconnection.
+- [Codex CLI integration](https://raw.githubusercontent.com/dzintars-co/totem-lab-mcp-control/main/Projects/totem-mcp/codex-bridge/codex.go): CLI subprocess execution, reporting instructions and conversation handling.
+- [Terminal dashboard](https://raw.githubusercontent.com/dzintars-co/totem-lab-mcp-control/main/Projects/totem-mcp/codex-bridge/dashboard.go): Hardware state, connection status, events and optional Codex reports.
