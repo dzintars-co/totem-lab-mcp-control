@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"net/http/httptest"
 	"sync"
 	"testing"
 	"time"
@@ -34,13 +33,13 @@ func TestMCPSubscriptionReadsCoalescedPressAndRelease(t *testing.T) {
 		}
 		return &mcp.ReadResourceResult{Contents: []*mcp.ResourceContents{{URI: eventsURI, Text: string(b)}}}, err
 	})
-	host := httptest.NewServer(mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, &mcp.StreamableHTTPOptions{Stateless: true}))
+	host := newMCPTestServer(t, mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, &mcp.StreamableHTTPOptions{Stateless: true}))
 	defer host.Close()
 	got := make(chan change, 10)
 	observed := make(chan document, 10)
 	done := make(chan error, 1)
 	go func() {
-		done <- panelSession(ctx, host.URL, &cursor{potStep: 2}, func(x change) error { got <- x; return nil }, func(d document) { observed <- d })
+		done <- panelSession(ctx, host.URL, &cursor{potStep: 2}, func(x change) error { got <- x; return nil }, func(d document) { observed <- d }, nil)
 	}()
 	// Initial read and read after subscription acknowledgement.
 	for i := 0; i < 2; i++ {
@@ -83,5 +82,84 @@ func TestMCPSubscriptionReadsCoalescedPressAndRelease(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("listener did not stop")
+	}
+}
+
+func TestMCPDisconnectAndReconnectWithoutPanelChanges(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	server := mcp.NewServer(&mcp.Implementation{Name: "fixture", Version: "1"}, &mcp.ServerOptions{
+		SupportedProtocolVersions: []string{"2026-07-28"},
+		SubscribeHandler:          func(context.Context, *mcp.SubscribeRequest) error { return nil },
+		UnsubscribeHandler:        func(context.Context, *mcp.UnsubscribeRequest) error { return nil },
+	})
+	server.AddResource(&mcp.Resource{URI: eventsURI, Name: "events"}, func(context.Context, *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
+		b, err := json.Marshal(baselineDoc())
+		return &mcp.ReadResourceResult{Contents: []*mcp.ResourceContents{{URI: eventsURI, Text: string(b)}}}, err
+	})
+	host := newMCPTestServer(t, mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, &mcp.StreamableHTTPOptions{Stateless: true}))
+	defer host.Close()
+	connections := make(chan mcpConnectionMsg, 10)
+	done := make(chan error, 1)
+	go func() {
+		done <- listenPanel(ctx, host.URL, &cursor{potStep: 2}, func(change) error {
+			t.Error("transport reconnect emitted a hardware change")
+			return nil
+		}, nil, func(connected bool, err error) {
+			connections <- mcpConnectionMsg{connected: connected, err: err}
+		})
+	}()
+	waitConnection := func(want bool) mcpConnectionMsg {
+		t.Helper()
+		select {
+		case got := <-connections:
+			if got.connected != want {
+				t.Fatalf("connection=%v want=%v (error=%v)", got.connected, want, got.err)
+			}
+			return got
+		case <-time.After(time.Second):
+			t.Fatalf("connection status %v was not reported promptly", want)
+			return mcpConnectionMsg{}
+		}
+	}
+	waitConnection(true)
+	// Only cut the HTTP streams. The server stays available for reconnection,
+	// and the hardware state stays unchanged throughout the test.
+	host.CloseClientConnections()
+	if got := waitConnection(false); got.err == nil {
+		t.Fatal("disconnect had no error")
+	}
+	select {
+	case got := <-connections:
+		if !got.connected || got.err != nil {
+			t.Fatalf("reconnect did not restore subscription: %+v", got)
+		}
+	case <-ctx.Done():
+		t.Fatal("bridge did not reconnect")
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("listener stopped with %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("listener did not stop after cancellation")
+	}
+}
+
+func TestMCPInitialConnectionFailureIsObserved(t *testing.T) {
+	host := newMCPTestServer(t, http.NotFoundHandler())
+	endpoint := host.URL
+	host.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	var statuses []mcpConnectionMsg
+	err := panelSession(ctx, endpoint, &cursor{}, func(change) error { return nil }, nil,
+		func(connected bool, err error) {
+			statuses = append(statuses, mcpConnectionMsg{connected: connected, err: err})
+		})
+	if err == nil || len(statuses) != 1 || statuses[0].connected || statuses[0].err == nil {
+		t.Fatalf("startup failure not observed: err=%v statuses=%+v", err, statuses)
 	}
 }

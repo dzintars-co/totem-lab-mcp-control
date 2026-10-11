@@ -16,6 +16,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 var (
@@ -40,9 +41,12 @@ var (
 
 type dashboardModel struct {
 	width, height int
+	scrollOffset  int
 	now           time.Time
 	doc           document
 	hasDocument   bool
+	mcpConnected  bool
+	mcpError      string
 	agentStatus   string
 	agentBusy     bool
 	agentAnswers  []string
@@ -53,6 +57,10 @@ type dashboardModel struct {
 }
 
 type documentMsg document
+type mcpConnectionMsg struct {
+	connected bool
+	err       error
+}
 type changeMsg change
 type agentBusyMsg struct{ count int }
 type agentAnswerMsg string
@@ -81,6 +89,25 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "esc", "ctrl+c":
 			return m, tea.Quit
+		case "up", "k":
+			m.scrollOffset--
+		case "down", "j":
+			m.scrollOffset++
+		case "pgup":
+			m.scrollOffset -= max(1, m.viewportHeight())
+		case "pgdown":
+			m.scrollOffset += max(1, m.viewportHeight())
+		case "home":
+			m.scrollOffset = 0
+		case "end":
+			m.scrollOffset = m.maxScroll()
+		}
+	case tea.MouseWheelMsg:
+		switch msg.Button {
+		case tea.MouseWheelUp:
+			m.scrollOffset -= 3
+		case tea.MouseWheelDown:
+			m.scrollOffset += 3
 		}
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
@@ -89,6 +116,11 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, dashboardTick()
 	case documentMsg:
 		m.doc, m.hasDocument = document(msg), true
+	case mcpConnectionMsg:
+		m.mcpConnected, m.mcpError = msg.connected, ""
+		if msg.err != nil && !errors.Is(msg.err, context.Canceled) {
+			m.mcpError = msg.err.Error()
+		}
 	case changeMsg:
 		m.eventLines = appendRecent(m.eventLines, describeChange(change(msg)), 7)
 	case agentBusyMsg:
@@ -110,20 +142,66 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case bridgeLogMsg:
 		m.bridgeLog = strings.TrimSpace(string(msg))
 	}
+	m.scrollOffset = min(max(0, m.scrollOffset), m.maxScroll())
 	return m, nil
 }
 
 func (m dashboardModel) View() tea.View {
-	w := m.width
-	if w < 60 {
-		w = 60
+	width := m.contentWidth()
+	lines := m.bodyLines()
+	height := m.viewportHeight()
+	offset := min(max(0, m.scrollOffset), max(0, len(lines)-height))
+	visible := []string{m.renderHeader(width)}
+	for i := 0; i < height; i++ {
+		line := ""
+		if offset+i < len(lines) {
+			line = lines[offset+i]
+		}
+		visible = append(visible, line)
 	}
-	contentWidth := w - 4
-	if contentWidth < 50 {
-		contentWidth = 50
+	if m.height >= 3 {
+		help := "↑↓ PgUp/PgDn Home/End • q: iziet"
+		if width < 40 {
+			help = "↑↓ • q: iziet"
+		}
+		if len(lines) > height {
+			help = fmt.Sprintf("%d–%d/%d  %s", offset+1, min(offset+height, len(lines)), len(lines), help)
+		}
+		visible = append(visible, labelStyle.Render(ansi.Truncate(help, width, "")))
 	}
+	for i, line := range visible {
+		visible[i] = ansi.Truncate(line, width, "")
+		if m.width >= 60 {
+			visible[i] = "  " + visible[i]
+		}
+	}
+	view := tea.NewView(strings.Join(visible, "\n"))
+	view.AltScreen = true
+	view.MouseMode = tea.MouseModeCellMotion
+	view.WindowTitle = "Totem Control"
+	return view
+}
 
-	header := m.renderHeader(contentWidth)
+func (m dashboardModel) contentWidth() int {
+	if m.width >= 60 {
+		return m.width - 4
+	}
+	return max(1, m.width)
+}
+
+func (m dashboardModel) viewportHeight() int {
+	if m.height < 3 {
+		return max(0, m.height-1)
+	}
+	return m.height - 2 // Keep connection status and scroll controls visible.
+}
+
+func (m dashboardModel) maxScroll() int {
+	return max(0, len(m.bodyLines())-m.viewportHeight())
+}
+
+func (m dashboardModel) bodyLines() []string {
+	contentWidth := m.contentWidth()
 	leftWidth := contentWidth
 	rightWidth := contentWidth
 	stacked := contentWidth < 104
@@ -137,19 +215,15 @@ func (m dashboardModel) View() tea.View {
 	if stacked {
 		body = lipgloss.JoinVertical(lipgloss.Left, left, right)
 	}
-	footer := labelStyle.Render("q / esc / ctrl+c — iziet   •   dzīvie dati no panel://events")
-	view := tea.NewView(lipgloss.NewStyle().Padding(1, 2).Render(lipgloss.JoinVertical(lipgloss.Left, header, "", body, "", footer)))
-	view.AltScreen = true
-	view.WindowTitle = "Totem Control"
-	return view
+	return strings.Split(ansi.Hardwrap(body, contentWidth, true), "\n")
 }
 
 func (m dashboardModel) renderHeader(width int) string {
-	connected := m.hasDocument && m.doc.Valid && m.doc.Status == "connected"
+	connected := m.mcpConnected && m.hasDocument && m.doc.Valid && m.doc.Status == "connected"
 	status := errorStyle.Render("DISCONNECTED")
 	if connected {
 		status = okStyle.Render("CONNECTED")
-	} else if m.hasDocument && m.doc.Status != "" {
+	} else if m.mcpConnected && m.hasDocument && m.doc.Status != "" && m.doc.Status != "connected" {
 		status = warnStyle.Render(strings.ToUpper(m.doc.Status))
 	}
 	port := m.doc.Port
@@ -159,23 +233,26 @@ func (m dashboardModel) renderHeader(width int) string {
 	right := fmt.Sprintf("%s  %s  %s", m.now.Format("15:04:05"), status, labelStyle.Render(port))
 	space := width - lipgloss.Width("TOTEM CONTROL") - lipgloss.Width(right)
 	if space < 2 {
-		space = 2
+		compact := status + "  " + labelStyle.Render(port)
+		if lipgloss.Width(compact) > width {
+			compact = status
+		}
+		return ansi.Truncate(compact, width, "")
 	}
 	return titleStyle.Render("TOTEM CONTROL") + strings.Repeat(" ", space) + right
 }
 
 func (m dashboardModel) renderPanel(width int) string {
-	inner := width - 4
-	if inner < 36 {
-		inner = 36
-	}
 	if !m.hasDocument || m.doc.State == nil {
-		return boxStyle.Width(inner).Render(sectionStyle.Render("PANELIS") + "\n\n" + warnStyle.Render("Gaida pirmo derīgo nolasījumu…"))
+		return renderBox(width, sectionStyle.Render("PANELIS")+"\n\n"+warnStyle.Render("Gaida pirmo derīgo nolasījumu…"))
 	}
 	s := *m.doc.State
 	var b strings.Builder
 	b.WriteString(sectionStyle.Render("PANELIS"))
 	b.WriteString("\n\n")
+	if !m.mcpConnected || !m.doc.Valid || m.doc.Status != "connected" {
+		b.WriteString(warnStyle.Render("Pēdējais nolasījums — nav aktuāls.") + "\n\n")
+	}
 	b.WriteString(groupTitle("ELEMENTS", "STATE", "VALUE"))
 	b.WriteString("\n")
 	b.WriteString(digitalRow("Slēdzis A", s.Switch1 == 1, "ON", "OFF", s.Switch1))
@@ -202,13 +279,13 @@ func (m dashboardModel) renderPanel(width int) string {
 	b.WriteString("\n\n" + digitalRow("Relejs", s.Relay == 1, "ON", "OFF", s.Relay))
 	b.WriteString("\n\n")
 	b.WriteString(labelStyle.Render(fmt.Sprintf("PORT  %s   BAUD  %d   EVENT  %d", m.doc.Port, m.doc.Baud, m.doc.LastEventID)))
-	return boxStyle.Width(inner).Render(b.String())
+	return renderBox(width, b.String())
 }
 
 func (m dashboardModel) renderAgent(width int) string {
-	inner := width - 4
-	if inner < 36 {
-		inner = 36
+	inner := max(1, width-4)
+	if width < 40 {
+		inner = max(1, width)
 	}
 	status := okStyle.Render(m.agentStatus)
 	if m.agentBusy {
@@ -232,13 +309,23 @@ func (m dashboardModel) renderAgent(width int) string {
 	b.WriteString(valueStyle.Width(inner).Render(answers))
 	b.WriteString("\n\n" + labelStyle.Render("NOTIKUMI") + "\n")
 	b.WriteString(valueStyle.Width(inner).Render(events))
+	if m.mcpError != "" {
+		b.WriteString("\n\n" + errorStyle.Render("MCP: "+m.mcpError))
+	}
 	if m.bridgeLog != "" {
 		b.WriteString("\n\n" + labelStyle.Render(m.bridgeLog))
 	}
 	if m.err != "" {
 		b.WriteString("\n\n" + errorStyle.Width(inner).Render(m.err))
 	}
-	return boxStyle.Width(inner).Render(b.String())
+	return renderBox(width, b.String())
+}
+
+func renderBox(width int, content string) string {
+	if width < 40 {
+		return ansi.Wrap(content, max(1, width), "")
+	}
+	return boxStyle.Width(width - 2).Render(ansi.Wrap(content, width-4, ""))
 }
 
 func groupTitle(a, b, c string) string {
@@ -422,7 +509,9 @@ func runDashboard(parent context.Context, o options, _ io.Writer, _ io.Writer) e
 	workers.Add(2)
 	go func() {
 		defer workers.Done()
-		err := listenPanel(ctx, o.endpoint, &cursor{potStep: o.potStep}, emit, func(d document) { program.Send(documentMsg(d)) })
+		err := listenPanel(ctx, o.endpoint, &cursor{potStep: o.potStep}, emit,
+			func(d document) { program.Send(documentMsg(d)) },
+			func(connected bool, err error) { program.Send(mcpConnectionMsg{connected: connected, err: err}) })
 		if err != nil && !errors.Is(err, context.Canceled) {
 			program.Send(agentErrorMsg{err: err})
 		}

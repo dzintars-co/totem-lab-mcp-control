@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
+	"mime"
+	"net/http"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -13,9 +16,9 @@ import (
 
 const eventsURI = "panel://events"
 
-func listenPanel(ctx context.Context, endpoint string, c *cursor, emit func(change) error, observe func(document)) error {
+func listenPanel(ctx context.Context, endpoint string, c *cursor, emit func(change) error, observe func(document), connection func(bool, error)) error {
 	for {
-		err := panelSession(ctx, endpoint, c, emit, observe)
+		err := panelSession(ctx, endpoint, c, emit, observe, connection)
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -34,7 +37,17 @@ func listenPanel(ctx context.Context, endpoint string, c *cursor, emit func(chan
 	}
 }
 
-func panelSession(ctx context.Context, endpoint string, c *cursor, emit func(change) error, observe func(document)) error {
+func panelSession(ctx context.Context, endpoint string, c *cursor, emit func(change) error, observe func(document), connection func(bool, error)) (sessionErr error) {
+	var s *mcp.ClientSession
+	defer func() {
+		if connection != nil {
+			connection(false, sessionErr)
+		}
+		if s != nil {
+			_ = s.Close()
+		}
+	}()
+	streamEnded := make(chan error, 1)
 	updates, ack := make(chan struct{}, 1), make(chan struct{}, 1)
 	client := mcp.NewClient(&mcp.Implementation{Name: "totem-codex-bridge", Version: "0.1.0"}, &mcp.ClientOptions{
 		ResourceUpdatedHandler: func(_ context.Context, r *mcp.ResourceUpdatedNotificationRequest) {
@@ -65,12 +78,14 @@ func panelSession(ctx context.Context, endpoint string, c *cursor, emit func(cha
 		}
 	})
 	callCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	s, err := client.Connect(callCtx, &mcp.StreamableClientTransport{Endpoint: endpoint}, nil)
+	s, err := client.Connect(callCtx, &mcp.StreamableClientTransport{
+		Endpoint: endpoint, MaxRetries: -1,
+		HTTPClient: &http.Client{Transport: eventStreamTransport{base: http.DefaultTransport, ended: streamEnded}},
+	}, nil)
 	cancel()
 	if err != nil {
 		return err
 	}
-	defer s.Close()
 	d, err := readDocument(ctx, s)
 	if err != nil {
 		return err
@@ -88,6 +103,7 @@ func panelSession(ctx context.Context, endpoint string, c *cursor, emit func(cha
 	if err == nil {
 		select {
 		case <-ack:
+		case err = <-streamEnded:
 		case <-callCtx.Done():
 			err = callCtx.Err()
 		}
@@ -107,6 +123,9 @@ func panelSession(ctx context.Context, endpoint string, c *cursor, emit func(cha
 	if observe != nil {
 		observe(d)
 	}
+	if connection != nil {
+		connection(true, nil)
+	}
 	log.Printf("MCP abonēts: stream=%s event=%d", c.stream, c.id)
 	ended := make(chan error, 1)
 	go func() { ended <- s.Wait() }()
@@ -114,6 +133,8 @@ func panelSession(ctx context.Context, endpoint string, c *cursor, emit func(cha
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+		case err := <-streamEnded:
+			return err
 		case err := <-ended:
 			if err == nil {
 				return errors.New("session ended")
@@ -132,6 +153,59 @@ func panelSession(ctx context.Context, endpoint string, c *cursor, emit func(cha
 			}
 		}
 	}
+}
+
+// The SDK can retain a logical session after subscriptions/listen ends. Watch
+// the actual event stream so a dead subscription cannot leave the UI connected.
+// Ordinary finite SSE responses (such as resources/read) are not monitored.
+type eventStreamTransport struct {
+	base  http.RoundTripper
+	ended chan<- error
+}
+
+func (t eventStreamTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := t.base.RoundTrip(req)
+	if err != nil {
+		return nil, err
+	}
+	mediaType, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+	if mediaType == "text/event-stream" && isSubscriptionRequest(req) {
+		resp.Body = &eventStreamBody{ReadCloser: resp.Body, ctx: req.Context(), ended: t.ended}
+	}
+	return resp, nil
+}
+
+func isSubscriptionRequest(req *http.Request) bool {
+	if req.Method == http.MethodGet {
+		return true // Legacy standalone notification stream.
+	}
+	if req.Method != http.MethodPost || req.GetBody == nil {
+		return false
+	}
+	body, err := req.GetBody()
+	if err != nil {
+		return false
+	}
+	defer body.Close()
+	var call struct{ Method string }
+	return json.NewDecoder(body).Decode(&call) == nil && call.Method == "subscriptions/listen"
+}
+
+type eventStreamBody struct {
+	io.ReadCloser
+	ctx   context.Context
+	ended chan<- error
+}
+
+func (b *eventStreamBody) Read(p []byte) (int, error) {
+	n, err := b.ReadCloser.Read(p)
+	if err != nil && b.ctx.Err() == nil {
+		select {
+		case b.ended <- fmt.Errorf("MCP notikumu plūsma pārtrūkusi: %w", err):
+		default:
+		}
+	}
+	return n, err
 }
 
 func readDocument(ctx context.Context, s *mcp.ClientSession) (document, error) {

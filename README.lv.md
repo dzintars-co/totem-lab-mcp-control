@@ -8,6 +8,14 @@ Projektā ir Arduino programma, Go MCP serveris, Go/Codex termināļa panelis, p
 
 Tālāk aprakstīta projekta uzbūve, pieslēgumi un palaišanas komandas. Visi palaišanas ceļi ir relatīvi pret projekta saknes mapi **totem-lab-mcp-control**.
 
+Termināļa panelis ar aparatūras vērtībām un Codex notikumu atbildēm:
+
+![Termināļa panelis un Codex notikumu atbildes](Pictures/izvade.png)
+
+Pašreizējās ieeju vērtības, RGB un releja komandas un MCP abonēšanas statuss:
+
+![Paneļa vērtības, izeju komandas un MCP abonēšana](Pictures/dashboard-live-events.png)
+
 ## 1. Saturs un koda lasīšanas secība
 
 ```text
@@ -27,7 +35,8 @@ totem-lab-mcp-control/
 │   ├── panelis.jpg                     IO Side Panel
 │   ├── uno r3.jpg                      TotemDuino plate
 │   ├── plate.jpg                       Saslēgtā aparatūra
-│   └── izvade.png                      Termināļa paneļa piemērs
+│   ├── izvade.png                      Termināļa paneļa piemērs
+│   └── dashboard-live-events.png       Vērtības, izeju komandas un abonēšana
 └── Projects/totem-mcp/
     ├── go.mod / go.sum                  Servera modulis un atkarību kontrolsummas
     ├── cmd/totem-mcp/main.go            Servera ieejas punkts
@@ -76,15 +85,13 @@ Savienojuma programma (bridge) izmanto MCP `2026-07-28` abonēšanu ar oficiālo
 
 Serveris glabā ierobežotu notikumu vēsturi operatīvajā atmiņā. Jauns bridge process sāk ar jaunāko stāvokli. Pēc savienojuma pārtraukuma tas pats process atgūst saglabātos notikumus; ja vēsture trūkst vai serveris pārstartēts, tas paziņo par atkārtotu sinhronizāciju, neizdomājot pogu nospiešanas. Šī tehniskā abonēšana ir atsevišķa no maksas ChatGPT abonementa.
 
-Termināļa panelis ar aparatūras vērtībām un Codex notikumu atbildēm:
-
-![Termināļa panelis un Codex notikumu atbildes](Pictures/izvade.png)
+Bridge uzrauga faktisko HTTP/SSE abonēšanas plūsmu. Ja tā pārtrūkst vai pieslēgšanās neizdodas, panelis rāda `DISCONNECTED` un MCP kļūdu. Iepriekš saņemtās vērtības paliek redzamas ar norādi **Pēdējais nolasījums — nav aktuāls**. Bridge atkārtoti pieslēdzas pēc divām sekundēm. `CONNECTED` prasa aktīvu abonēšanu, `valid=true` un aparatūras `status=connected`; saglabāts nolasījums viens pats šo statusu neatjauno.
 
 ## 3. Priekšnosacījumi
 
 - Gatavie Go izpildfaili paredzēti **Linux x86-64 ar glibc 2.34 vai jaunāku**, `/lib64/ld-linux-x86-64.so.2` ielādētāju un `libc`/`libresolv`. Windows/macOS/ARM/musl videi vajadzīga atbilstoša vietējā kompilācija.
 - USB porta piekļuve un šī projekta programma platē. Citas seriālā porta programmas jāaizver.
-- Terminālis; aptuveni 110 kolonnas ļauj abas paneļa daļas rādīt blakus. Šaurākā logā tās izvietojas viena zem otras.
+- Terminālis; aptuveni 110 kolonnas ļauj abas paneļa daļas rādīt blakus. Šaurākā logā tās izvietojas viena zem otras. Skats pielāgojas loga augstumam un atbalsta ritināšanu.
 - Tikai AI režīmam: uzstādīts/autorizēts **Codex CLI**, internets un konta pieejamība. CLI jāatbalsta `exec`, `exec resume`, `--json`, `--ignore-user-config`; `codex` jābūt `PATH` vai jānorāda ar `-codex`.
 - Tikai pārbūvei/iešūšanai: saderīgs Go/C kompilators un Arduino CLI/IDE ar AVR rīkiem. Gatavie Go faili būvēti ar **Go 1.27.2**; moduļos deklarēts Go 1.25.0 serverim un 1.26.0 bridge. Firmware izmanto **Arduino AVR core 1.8.8**, mērķis `arduino:avr:uno`.
 
@@ -156,9 +163,13 @@ Ja CLI nav autorizēts, izpildi `codex login`. Pēc tam:
 
 Jauni notikumi izraisa Codex atbildes paneļa logā. Manuālais čats ir atsevišķs. Ja vajag, pievieno `-codex /faktiskais/pilnais/cels/uz/codex`.
 
+Ritini ar `↑`/`↓` vai `k`/`j`, `PgUp`/`PgDn`, `Home`/`End` vai peles ritenīti. Savienojuma galvene un navigācijas norādes ritināšanas laikā paliek redzamas. Mainot termināļa izmēru, pielāgojas izkārtojums un pieejamais ritināšanas diapazons.
+
 #### Codex autentifikācija un saruna
 
 `codex.go` palaiž uzstādīto CLI un pārņem termināļa vides mainīgos. AI režīms izmanto šī CLI lokālo autentifikāciju: ChatGPT pieteikšanos vai Codex konfigurētu API atslēgas pieteikšanos. Projekts nenosaka konkrētu kontu. Codex pārvalda piekļuves datus savā glabātuvē, parasti `~/.codex` vai operētājsistēmas piekļuves datu glabātuvē; `CODEX_HOME` norāda Codex pamata mapi.
+
+Katrs lietotājs autorizē savu lokālo Codex CLI. Datorā, kur Codex jau ir autorizēts, AI režīms izmanto šī datora pašreizējo pieteikšanos. MCP serverim un paneļa `-dry-run` režīmam nav vajadzīgs OpenAI konts vai maksas abonements.
 
 Ziņošanas process izmanto `--ignore-user-config`, lai nelasītu `$CODEX_HOME/config.toml`. **Šis parametrs neatslēdz autentifikāciju.** `codex login status` rāda pieteikšanās statusu/režīmu. MCP notikumu abonēšana un `-dry-run` darbojas bez Codex pieteikšanās. Skatīt oficiālo [autentifikācijas dokumentāciju](https://learn.chatgpt.com/docs/auth) un [CLI aprakstu](https://learn.chatgpt.com/docs/cli/reference).
 
